@@ -1,7 +1,20 @@
+
+#[derive(Clone, Copy, Debug)]
+pub enum Keypad {
+    Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9, KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, 
+}
+
+#[derive(PartialEq)]
+enum State {
+    Running, KeyExpected,
+}
+
 pub struct Cpu {
     pc: usize,
     reg: [u8; 16],
     memory: Vec<u8>,
+    last_key: Option<Keypad>,
+    state: State,
 }
 
 impl Cpu {
@@ -10,16 +23,26 @@ impl Cpu {
             pc: 0,
             reg: [0; 16],
             memory: memory,
+            last_key: None,
+            state: State::Running,
         }
     }
 
     pub fn tick(&mut self) {
-        let instruction = (self.memory[self.pc] as u16) << 8 | self.memory[self.pc + 1] as u16;
-        self.execute(instruction);
-        self.pc = self.pc + 2;
+        if self.state == State::Running {
+            let instruction = (self.memory[self.pc] as u16) << 8 | self.memory[self.pc + 1] as u16;
+            if self.execute(instruction) {
+                self.pc = self.pc + 2;
+            }
+        }
     }
 
-    fn execute(&mut self, instruction: u16) {
+    pub fn set_key(&mut self, key: Keypad) {
+        self.last_key = Some(key);
+        self.state = State::Running;
+    }
+
+    fn execute(&mut self, instruction: u16) -> bool{
         let nnn = instruction & 0xFFF;
         let nn = (instruction & 0xFF) as u8;
         let x = ((instruction >> 8) & 0xF) as usize;
@@ -157,6 +180,14 @@ impl Cpu {
             //         Operation. All instruction halted until next key event)
             (0xF, _, 0x0, 0xA) => {
                 println!("Vx = get_key()");
+                self.state = State::KeyExpected;
+                if let Some(key) = self.last_key {
+                    println!("Set Vx to {:X}", key as u8);
+                    self.reg[x] = key as u8;
+                    self.last_key = None;
+                } else {
+                    return false;
+                }
             }
             // 0xFX15: Sets the delay timer to Vx
             (0xF, _, 0x1, 0x5) => panic!("delay_timer(Vx)"),
@@ -186,5 +217,7 @@ impl Cpu {
             (0xF, _, 0x6, 0x5) => panic!("Load V0-X from address I"),
             (_, _, _, _) => panic!("Unknown instruction: 0x{:04X}", instruction),
         };
+
+        true
     }
 }

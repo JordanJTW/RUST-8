@@ -5,4 +5,4 @@ authors = ["Jordan Werthman <jordanwerthman@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-ncurses = "5.86.0"
+piston_window = "0.89.0"
