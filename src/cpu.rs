@@ -15,6 +15,8 @@ pub struct Cpu {
     memory: Vec<u8>,
     last_key: Option<Keypad>,
     state: State,
+    stack: [usize; 16],
+    sp: usize,
 }
 
 impl Cpu {
@@ -25,6 +27,8 @@ impl Cpu {
             memory: memory,
             last_key: None,
             state: State::Running,
+            stack: [0; 16],
+            sp: 0,
         }
     }
 
@@ -58,16 +62,27 @@ impl Cpu {
         println!("Executing instruction: 0x{:04X}", instruction);
 
         match instruction_exploded {
-            (0x0, 0x0, 0xE, 0x0) => panic!("Clear Screen"),
-            (0x0, 0x0, 0xE, 0xE) => panic!("Return from subroutine"),
+            (0x0, 0x0, 0xE, 0x0) => println!("Clear Screen"),
+            (0x0, 0x0, 0xE, 0xE) => {
+                println!("Return from subroutine");
+                self.sp = self.sp - 1;
+                self.pc = self.stack[self.sp];
+            },
             (0x0, _, _, _) => panic!("Calls to RCA 1802"),
             // 0x1NNN: goto NNN
             (0x1, _, _, _) => {
                 println!("goto 0x{:03X}", nnn);
-                self.pc = nnn as usize;
+                // TODO(jordanjtw): Clean-up this PC fiddling.
+                self.pc = (nnn as usize - 2) - 0x200;
             }
             // 0x2NNN: Calls subroutine at NNN
-            (0x2, _, _, _) => panic!("Call: 0x{:03X}()", nnn),
+            (0x2, _, _, _) => {
+                println!("Call: 0x{:03X}()", nnn);
+                self.stack[self.sp] = self.pc;
+                self.sp = self.sp + 1;
+                // TODO(jordanjtw): Clean-up this PC fiddling.
+                self.pc = (nnn as usize - 2) - 0x200;
+            },
             // 0x3XNN: Skips next instruction if VX equals NN
             (0x3, _, _, _) => {
                 println!("Skip if Vx == NN");
@@ -155,7 +170,8 @@ impl Cpu {
             // 0xBNNN: Jumps to the address NNN plus V0
             (0xB, _, _, _) => {
                 println!("PC = V0 + NNN");
-                self.pc = (self.reg[0] as u16 + nnn) as usize;
+                // TODO(jordanjtw): Clean-up this PC fiddling.
+                self.pc = (self.reg[0] as u16 + nnn) as usize - 0x200 - 2;
             }
             // 0xCXNN: Sets VX to the result of a bitwise and operation on a
             //         random number (Typically: 0 to 255) and NN
