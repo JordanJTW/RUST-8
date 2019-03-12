@@ -1,12 +1,27 @@
-
 #[derive(Clone, Copy, Debug)]
 pub enum Keypad {
-    Key0, Key1, Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9, KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, 
+    Key0,
+    Key1,
+    Key2,
+    Key3,
+    Key4,
+    Key5,
+    Key6,
+    Key7,
+    Key8,
+    Key9,
+    KeyA,
+    KeyB,
+    KeyC,
+    KeyD,
+    KeyE,
+    KeyF,
 }
 
 #[derive(PartialEq)]
 enum State {
-    Running, KeyExpected,
+    Running,
+    KeyExpected,
 }
 
 pub struct Cpu {
@@ -46,7 +61,7 @@ impl Cpu {
         self.state = State::Running;
     }
 
-    fn execute(&mut self, instruction: u16) -> bool{
+    fn execute(&mut self, instruction: u16) -> bool {
         let nnn = instruction & 0xFFF;
         let nn = (instruction & 0xFF) as u8;
         let x = ((instruction >> 8) & 0xF) as usize;
@@ -67,7 +82,7 @@ impl Cpu {
                 println!("Return from subroutine");
                 self.sp = self.sp - 1;
                 self.pc = self.stack[self.sp];
-            },
+            }
             (0x0, _, _, _) => panic!("Calls to RCA 1802"),
             // 0x1NNN: goto NNN
             (0x1, _, _, _) => {
@@ -82,7 +97,7 @@ impl Cpu {
                 self.sp = self.sp + 1;
                 // TODO(jordanjtw): Clean-up this PC fiddling.
                 self.pc = (nnn as usize - 2) - 0x200;
-            },
+            }
             // 0x3XNN: Skips next instruction if VX equals NN
             (0x3, _, _, _) => {
                 println!("Skip if Vx == NN");
@@ -112,7 +127,7 @@ impl Cpu {
             // 0x7XNN: Adds NN to VX (Carry flag is not changed)
             (0x7, _, _, _) => {
                 println!("Vx += NN");
-                self.reg[x] = self.reg[x] + nn;
+                self.reg[x] = self.reg[x].wrapping_add(nn);
             }
             // 0x8XY0: Asigns VX to the value of VY
             (0x8, _, _, 0x0) => {
@@ -135,25 +150,35 @@ impl Cpu {
                 self.reg[x] = self.reg[x] ^ self.reg[y];
             }
             // 0x8XY4: Adds VY to VX; VF is set to 1 when there's a carry,
-            //         and to 0 when there isn't
+            //         and to 0 when there isn't i.e. the flag is set if the
+            //         result would exceed the max value of u8 (255).
             (0x8, _, _, 0x4) => {
-                panic!("Vx += Vy");
-                self.reg[x] = self.reg[x] + self.reg[y];
+                println!("Vx += Vy");
+                self.reg[0xF] = if self.reg[x] as u16 + self.reg[y] as u16 > 255 {
+                    1
+                } else {
+                    0
+                };
+                self.reg[x] = self.reg[x].wrapping_add(self.reg[y]);
             }
             // 0x8XY5: VY is subtracted from VX; VF is set to 0 when there's
-            //         a borrow, and 1 when there isn't
+            //         a borrow, and 1 when there isn't i.e. the flag is set if
+            //         the result of the subtraction would be negative.
             (0x8, _, _, 0x5) => {
-                panic!("Vx -= Vy");
-                self.reg[x] = self.reg[x] - self.reg[y];
+                println!("Vx -= Vy");
+                self.reg[0xF] = if self.reg[x] > self.reg[y] { 1 } else { 0 };
+                self.reg[x] = self.reg[x].wrapping_sub(self.reg[y]);
             }
             // 0x8XY6: Stores the least significant bit of VX in VF and then
             //         shifts VX to the right by 1
             (0x8, _, _, 0x6) => panic!("Vx >>= 1"),
             // 0x8XY7: Sets VX to VY minus VX. VF is set to 0 when there's a
-            //         borrow, and 1 when there isn't
+            //         borrow, and 1 when there isn't i.e. the flag is set if
+            //         the result of the subtraction would be negative.
             (0x8, _, _, 0x7) => {
-                panic!("Vx = Vy - Vx");
-                self.reg[x] = self.reg[y] - self.reg[x];
+                println!("Vx = Vy - Vx");
+                self.reg[0xF] = if self.reg[y] > self.reg[x] { 1 } else { 0 };
+                self.reg[x] = self.reg[y].wrapping_sub(self.reg[x]);
             }
             // 0x8XYE: Stores the most significant bit of VX in VF and then
             //         shifts VX to the left by 1
