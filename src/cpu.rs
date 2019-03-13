@@ -297,11 +297,21 @@ impl Cpu {
             // 0xFX55: Stores V0 to VX (including VX) in memory starting at
             //         address I. The offset from I is increased by 1 for each
             //         value written, but I itself is left unmodified
-            (0xF, _, 0x5, 0x5) => panic!("Store V0-X to address I"),
+            (0xF, _, 0x5, 0x5) => {
+                println!("Store V0-X to address I");
+                for pos in 0..x {
+                    self.memory[self.i + pos] = self.reg[pos];
+                }
+            }
             // 0xFX65: Fills V0 to VX (including VX) with values from memory
             //         starting at address I. The offset from I is increased by
             //         1 for each value written, but I itself is left unmodified
-            (0xF, _, 0x6, 0x5) => panic!("Load V0-X from address I"),
+            (0xF, _, 0x6, 0x5) => {
+                println!("Load V0-X from address I");
+                for pos in 0..x {
+                    self.reg[pos] = self.memory[self.i + pos];
+                }
+            }
             (_, _, _, _) => panic!("Unknown instruction: 0x{:04X}", instruction),
         };
 
