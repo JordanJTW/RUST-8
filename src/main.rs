@@ -9,6 +9,8 @@ use std::io::prelude::*;
 
 mod cpu;
 
+const WINDOW_SIZE: [u32; 2] = [800, 400];
+
 fn main() {
     let buffer = read_file("clock.ch8").expect("File not found.");
     println!("Read data: {:?}", buffer);
@@ -18,9 +20,10 @@ fn main() {
     let mut cpu: cpu::Cpu = cpu::Cpu::new(buffer);
 
     let opengl = OpenGL::V3_2;
-    let mut window: PistonWindow = WindowSettings::new("RUST-8", [300, 300])
+    let mut window: PistonWindow = WindowSettings::new("RUST-8", WINDOW_SIZE)
         .exit_on_esc(true)
         .opengl(opengl)
+        // .fullscreen(true)
         .build()
         .unwrap();
 
@@ -49,8 +52,21 @@ fn main() {
     };
 
     while let Some(e) = window.next() {
-        window.draw_2d(&e, |_, gfx| {
-            clear([0.0; 4], gfx);
+        window.draw_2d(&e, |ctx, gfx| {
+            clear(color::BLACK, gfx);
+            
+            let board = cpu.display();
+            let dimen = ctx.get_view_size()[0] / 64.0;
+
+            for x in 0..63 {
+                for y in 0..31 {
+                    if board[y * 64 + x] {
+                        let location = rectangle::square(
+                                x as f64 * dimen, y as f64 * dimen, dimen - 0.5);
+                        rectangle(color::WHITE, location, ctx.transform, gfx);
+                    }
+                }
+            }
         });
 
         if let Some(Button::Keyboard(key)) = e.press_args() {

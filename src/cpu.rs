@@ -32,6 +32,7 @@ pub struct Cpu {
     state: State,
     stack: [usize; 16],
     sp: usize,
+    display: [bool; 64 * 32],
 }
 
 impl Cpu {
@@ -44,6 +45,7 @@ impl Cpu {
             state: State::Running,
             stack: [0; 16],
             sp: 0,
+            display: [false; 64 * 32],
         }
     }
 
@@ -54,6 +56,10 @@ impl Cpu {
                 self.pc = self.pc + 2;
             }
         }
+    }
+
+    pub fn display(&mut self) -> &[bool; 64*32] {
+        return &self.display;
     }
 
     pub fn set_key(&mut self, key: Keypad) {
