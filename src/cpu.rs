@@ -1,3 +1,5 @@
+// Copyright of Jordan Werthman (2019).
+
 #[derive(Clone, Copy, Debug)]
 pub enum Keypad {
     Key0,
@@ -33,6 +35,7 @@ pub struct Cpu {
     stack: [usize; 16],
     sp: usize,
     display: [bool; 64 * 32],
+    i: usize,
 }
 
 impl Cpu {
@@ -46,19 +49,23 @@ impl Cpu {
             stack: [0; 16],
             sp: 0,
             display: [false; 64 * 32],
+            i: 0,
         }
     }
 
-    pub fn tick(&mut self) {
+    // TODO(jordanjtw): Remove |bool| hack to pause execution while debugging.
+    pub fn tick(&mut self) -> bool {
         if self.state == State::Running {
             let instruction = (self.memory[self.pc] as u16) << 8 | self.memory[self.pc + 1] as u16;
             if self.execute(instruction) {
                 self.pc = self.pc + 2;
+                return true;
             }
         }
+        return false;
     }
 
-    pub fn display(&mut self) -> &[bool; 64*32] {
+    pub fn display(&mut self) -> &[bool; 64 * 32] {
         return &self.display;
     }
 
@@ -70,6 +77,7 @@ impl Cpu {
     fn execute(&mut self, instruction: u16) -> bool {
         let nnn = instruction & 0xFFF;
         let nn = (instruction & 0xFF) as u8;
+        let n = (instruction & 0xF) as u8;
         let x = ((instruction >> 8) & 0xF) as usize;
         let y = ((instruction >> 4) & 0xF) as usize;
 
@@ -160,12 +168,10 @@ impl Cpu {
             //         result would exceed the max value of u8 (255).
             (0x8, _, _, 0x4) => {
                 println!("Vx += Vy");
-                self.reg[0xF] = if self.reg[x] as u16 + self.reg[y] as u16 > 255 {
-                    1
-                } else {
-                    0
-                };
                 self.reg[x] = self.reg[x].wrapping_add(self.reg[y]);
+
+                let value: u16 = self.reg[x] as u16 + self.reg[y] as u16;
+                self.reg[0xF] = if value > 255 { 1 } else { 0 };
             }
             // 0x8XY5: VY is subtracted from VX; VF is set to 0 when there's
             //         a borrow, and 1 when there isn't i.e. the flag is set if
@@ -197,7 +203,10 @@ impl Cpu {
                 }
             }
             // 0xANNN: Sets I to the address NNN
-            (0xA, _, _, _) => panic!("I = NNN"),
+            (0xA, _, _, _) => {
+                println!("I = NNN");
+                self.i = nnn as usize - 0x200;
+            }
             // 0xBNNN: Jumps to the address NNN plus V0
             (0xB, _, _, _) => {
                 println!("PC = V0 + NNN");
@@ -214,7 +223,27 @@ impl Cpu {
             //         instruction. As described above, VF is set to 1 if any
             //         screen pixels are flipped from set to unset when the
             //         sprite is drawn, and to 0 if that doesn’t happen
-            (0xD, _, _, _) => panic!("draw(Vx,Vy,N)"),
+            (0xD, _, _, _) => {
+                println!("draw(Vx,Vy,N)");
+                let (x, y) = (self.reg[x], self.reg[y]);
+                println!("draw(X={}, Y={}, H={})", x, y, n);
+
+                for dy in 0..n {
+                    for dx in 0..8 {
+                        let (x, y) = (x + dx, y + dy);
+                        let byte: u8 = self.memory[self.i + dy as usize];
+
+                        if x >= 64 || y >= 32 {
+                            continue;
+                        }
+
+                        let index: usize = y as usize * 64 + x as usize;
+                        self.display[index] = ((byte << dx) & 0x80) != 0;
+                    }
+                }
+
+                self.print_board();
+            }
             // 0xEX9E: Skips the next instruction if the key stored in VX is
             //         pressed
             (0xE, _, 0x9, 0xE) => panic!("Skip if key() == Vx"),
@@ -253,7 +282,18 @@ impl Cpu {
             //         the decimal representation of VX, place the hundreds
             //         digit in memory at location in I, the tens digit at
             //         location I+1, and the ones digit at location I+2.)
-            (0xF, _, 0x3, 0x3) => panic!("Store BCD"),
+            (0xF, _, 0x3, 0x3) => {
+                println!("Store BCD");
+                let mut value = self.reg[x];
+                for pos in 0..3 {
+                    // Use integer division to separate each digit of |value|.
+                    let magnitude = 10_u8.pow(2 - pos);
+                    let digit = value / magnitude;
+
+                    self.memory[self.i + pos as usize] = digit;
+                    value -= magnitude * digit;
+                }
+            }
             // 0xFX55: Stores V0 to VX (including VX) in memory starting at
             //         address I. The offset from I is increased by 1 for each
             //         value written, but I itself is left unmodified
@@ -266,5 +306,15 @@ impl Cpu {
         };
 
         true
+    }
+
+    fn print_board(&mut self) {
+        for y in 0..32 {
+            for x in 0..64 {
+                let index: usize = y as usize * 64 + x as usize;
+                print!("{}", if self.display[index] { "#" } else { "_" });
+            }
+            println!();
+        }
     }
 }

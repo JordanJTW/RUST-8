@@ -1,7 +1,5 @@
 // Copyright of Jordan Werthman (2019).
 
-extern crate piston_window;
-
 use piston_window::*;
 use std::fs::File;
 use std::io;
@@ -12,7 +10,7 @@ mod cpu;
 const WINDOW_SIZE: [u32; 2] = [800, 400];
 
 fn main() {
-    let buffer = read_file("clock.ch8").expect("File not found.");
+    let buffer = read_file("pong.ch8").expect("File not found.");
     println!("Read data: {:?}", buffer);
 
     println!("Loaded {} instructions.", buffer.len() / 2);
@@ -51,18 +49,19 @@ fn main() {
         }
     };
 
+    let mut should_tick = true;
     while let Some(e) = window.next() {
         window.draw_2d(&e, |ctx, gfx| {
             clear(color::BLACK, gfx);
-            
+
             let board = cpu.display();
             let dimen = ctx.get_view_size()[0] / 64.0;
 
-            for x in 0..63 {
-                for y in 0..31 {
+            for x in 0..64 {
+                for y in 0..32 {
                     if board[y * 64 + x] {
-                        let location = rectangle::square(
-                                x as f64 * dimen, y as f64 * dimen, dimen - 0.5);
+                        let location =
+                            rectangle::square(x as f64 * dimen, y as f64 * dimen, dimen - 0.5);
                         rectangle(color::WHITE, location, ctx.transform, gfx);
                     }
                 }
@@ -76,7 +75,9 @@ fn main() {
             }
         }
 
-        cpu.tick();
+        if should_tick {
+            should_tick = cpu.tick();
+        }
     }
 }
 
