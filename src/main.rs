@@ -1,20 +1,17 @@
 // Copyright of Jordan Werthman (2019).
 
 use piston_window::*;
+
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
 mod cpu;
 
-const WINDOW_SIZE: [u32; 2] = [800, 400];
+const WINDOW_SIZE: [u32; 2] = [500, 250];
 
 fn main() {
-    let buffer = read_file("pong.ch8").expect("File not found.");
-    println!("Read data: {:?}", buffer);
-
-    println!("Loaded {} instructions.", buffer.len() / 2);
-
+    let buffer = read_file("brix.ch8").expect("File not found.");
     let mut cpu: cpu::Cpu = cpu::Cpu::new(buffer);
 
     let opengl = OpenGL::V3_2;
@@ -29,29 +26,29 @@ fn main() {
         use keyboard::Key;
 
         match piston_key {
-            Key::D1 => Some(cpu::Keypad::Key1),
-            Key::Up | Key::D2 => Some(cpu::Keypad::Key2),
-            Key::D3 => Some(cpu::Keypad::Key3),
-            Key::Left | Key::Q => Some(cpu::Keypad::Key4),
-            Key::W => Some(cpu::Keypad::Key5),
-            Key::Right | Key::E => Some(cpu::Keypad::Key6),
-            Key::A => Some(cpu::Keypad::Key7),
-            Key::Down | Key::S => Some(cpu::Keypad::Key8),
-            Key::D => Some(cpu::Keypad::Key9),
-            Key::X => Some(cpu::Keypad::Key0),
-            Key::D4 => Some(cpu::Keypad::KeyA),
-            Key::R => Some(cpu::Keypad::KeyB),
-            Key::F => Some(cpu::Keypad::KeyC),
-            Key::Z => Some(cpu::Keypad::KeyD),
-            Key::C => Some(cpu::Keypad::KeyE),
-            Key::V => Some(cpu::Keypad::KeyF),
+            Key::D1 => Some(0x1),
+            Key::Up | Key::D2 => Some(0x2),
+            Key::D3 => Some(0x3),
+            Key::Left | Key::Q => Some(0x4),
+            Key::W => Some(0x5),
+            Key::Right | Key::E => Some(0x6),
+            Key::A => Some(0x7),
+            Key::Down | Key::S => Some(0x8),
+            Key::D => Some(0x9),
+            Key::X => Some(0x0),
+            Key::D4 => Some(0xA),
+            Key::R => Some(0xB),
+            Key::F => Some(0xC),
+            Key::Z => Some(0xD),
+            Key::C => Some(0xE),
+            Key::V => Some(0xF),
             _ => None,
         }
     };
 
-    let mut should_tick = true;
-    while let Some(e) = window.next() {
-        window.draw_2d(&e, |ctx, gfx| {
+    let mut should_tick = false;
+    while let Some(event) = window.next() {
+        window.draw_2d(&event, |ctx, gfx| {
             clear(color::BLACK, gfx);
 
             let board = cpu.display();
@@ -68,15 +65,37 @@ fn main() {
             }
         });
 
-        if let Some(Button::Keyboard(key)) = e.press_args() {
-            if let Some(keypad) = key_mapping(key) {
-                println!("Send: {:?} -> {:?}", key, keypad);
-                cpu.set_key(keypad);
+        if let Event::Input(input) = &event {
+            match input {
+                Input::Button(ButtonArgs {
+                    button: Button::Keyboard(key),
+                    state,
+                    ..
+                }) => {
+                    if let Some(keypad) = key_mapping(*key) {
+                        match state {
+                            ButtonState::Press => {
+                                println!("Keypad set {:?}", keypad);
+                                cpu.set_key(keypad);
+                            }
+                            ButtonState::Release => {
+                                println!("Keypad clear {:?}", keypad);
+                                cpu.clear_key(keypad);
+                            }
+                        }
+                    }
+                }
+                Input::FileDrag(FileDrag::Drop(path)) => {
+                    let filename: &str = path.to_str().expect("Invalid path.");
+                    cpu = cpu::Cpu::new(read_file(filename).expect("File not found."));
+                    should_tick = true;
+                }
+                _ => (),
             }
         }
 
         if should_tick {
-            should_tick = cpu.tick();
+           cpu.tick();
         }
     }
 }
@@ -86,6 +105,7 @@ fn read_file(filename: &str) -> io::Result<(Vec<u8>)> {
 
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
+    println!("Loaded {} instructions.", buffer.len() / 2);
 
     Ok(buffer)
 }

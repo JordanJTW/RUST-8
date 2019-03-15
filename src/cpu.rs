@@ -1,25 +1,5 @@
 // Copyright of Jordan Werthman (2019).
 
-#[derive(Clone, Copy, Debug)]
-pub enum Keypad {
-    Key0,
-    Key1,
-    Key2,
-    Key3,
-    Key4,
-    Key5,
-    Key6,
-    Key7,
-    Key8,
-    Key9,
-    KeyA,
-    KeyB,
-    KeyC,
-    KeyD,
-    KeyE,
-    KeyF,
-}
-
 #[derive(PartialEq)]
 enum State {
     Running,
@@ -30,11 +10,12 @@ pub struct Cpu {
     pc: usize,
     reg: [u8; 16],
     memory: Vec<u8>,
-    last_key: Option<Keypad>,
+    last_key: Option<usize>,
     state: State,
     stack: [usize; 16],
     sp: usize,
     display: [bool; 64 * 32],
+    keys: [bool; 16],
     i: usize,
 }
 
@@ -49,6 +30,7 @@ impl Cpu {
             stack: [0; 16],
             sp: 0,
             display: [false; 64 * 32],
+            keys: [false; 16],
             i: 0,
         }
     }
@@ -69,9 +51,14 @@ impl Cpu {
         return &self.display;
     }
 
-    pub fn set_key(&mut self, key: Keypad) {
+    pub fn set_key(&mut self, key: usize) {
         self.last_key = Some(key);
+        self.keys[key] = true;
         self.state = State::Running;
+    }
+
+    pub fn clear_key(&mut self, key: usize) {
+        self.keys[key] = false;
     }
 
     fn execute(&mut self, instruction: u16) -> bool {
