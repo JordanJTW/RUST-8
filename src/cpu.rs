@@ -17,6 +17,8 @@ pub struct Cpu {
     display: [bool; 64 * 32],
     keys: [bool; 16],
     i: usize,
+    delay_timer: f64,
+    sound_timer: f64,
 }
 
 impl Cpu {
@@ -32,6 +34,8 @@ impl Cpu {
             display: [false; 64 * 32],
             keys: [false; 16],
             i: 0,
+            delay_timer: 0.0,
+            sound_timer: 0.0,
         }
     }
 
@@ -59,6 +63,21 @@ impl Cpu {
 
     pub fn clear_key(&mut self, key: usize) {
         self.keys[key] = false;
+    }
+
+    pub fn update_timers(&mut self, dt: f64) {
+        if self.delay_timer > 0.0 {
+            self.delay_timer -= dt * 60.0;
+        }
+        if self.sound_timer > 0.0 {
+            self.sound_timer -= dt * 60.0;
+        }
+        if self.delay_timer < 0.0 {
+            self.delay_timer = 0.0;
+        }
+        if self.sound_timer < 0.0 {
+            self.sound_timer = 0.0;
+        }
     }
 
     fn execute(&mut self, instruction: u16) -> bool {
@@ -231,14 +250,27 @@ impl Cpu {
 
                 self.print_board();
             }
-            // 0xEX9E: Skips the next instruction if the key stored in VX is
+           // 0xEX9E: Skips the next instruction if the key stored in VX is
             //         pressed
-            (0xE, _, 0x9, 0xE) => panic!("Skip if key() == Vx"),
+            (0xE, _, 0x9, 0xE) => {
+                println!("Skip if key() == Vx");
+                if self.keys[self.reg[x] as usize] {
+                    self.pc = self.pc + 2;
+                }
+            }
             // 0xEXA1: Skips the next instruction if the key stored in VX is
             //         not pressed
-            (0xE, _, 0xA, 0x1) => panic!("Skip if key() != Vx"),
+            (0xE, _, 0xA, 0x1) => {
+                println!("Skip if key() != Vx");
+                if !self.keys[self.reg[x] as usize] {
+                    self.pc = self.pc + 2;
+                }
+            }
             // 0xFX07: Sets VX to the value of the delay timer
-            (0xF, _, 0x0, 0x7) => panic!("Vx = delay_timer()"),
+            (0xF, _, 0x0, 0x7) => {
+                println!("Vx = delay_timer() {}", self.delay_timer as u8);
+                self.reg[x] = self.delay_timer as u8;
+            }
             // 0xFX0A: A key press is awaited, and then stored in VX. (Blocking
             //         Operation. All instruction halted until next key event)
             (0xF, _, 0x0, 0xA) => {
@@ -248,14 +280,15 @@ impl Cpu {
                     println!("Set Vx to {:X}", key as u8);
                     self.reg[x] = key as u8;
                     self.last_key = None;
-                } else {
-                    return false;
                 }
             }
             // 0xFX15: Sets the delay timer to Vx
-            (0xF, _, 0x1, 0x5) => panic!("delay_timer(Vx)"),
+            (0xF, _, 0x1, 0x5) => {
+                println!("delay_timer(Vx) {}", self.reg[x]);
+                self.delay_timer = self.reg[x] as f64;
+            }
             // 0xFX18: Sets the sound timer to VX
-            (0xF, _, 0x1, 0x8) => panic!("sound_timer(Vx)"),
+            (0xF, _, 0x1, 0x8) => println!("sound_timer(Vx)"),
             // 0xFX1E: Adds VX to I
             (0xF, _, 0x1, 0xE) => panic!("I += Vx"),
             // 0xFX29: Sets I to the location of the sprite for the character

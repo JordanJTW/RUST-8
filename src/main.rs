@@ -94,6 +94,10 @@ fn main() {
             }
         }
 
+        if let Some(args) = event.update_args() {
+            cpu.update_timers(args.dt);
+        }
+
         if should_tick {
            cpu.tick();
         }
