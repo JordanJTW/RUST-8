@@ -9,7 +9,7 @@ enum State {
 pub struct Cpu {
     pc: usize,
     reg: [u8; 16],
-    memory: Vec<u8>,
+    memory: [u8; 4096],
     last_key: Option<usize>,
     state: State,
     stack: [usize; 16],
@@ -22,9 +22,28 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(memory: Vec<u8>) -> Cpu {
+    pub fn new(rom: Vec<u8>) -> Cpu {
+        let mut memory = [0; 4096];
+
+        let font: [u8; 80] = [
+            0xF0, 0x90, 0x90, 0x90, 0xF0, 0x20, 0x60, 0x20, 0x20, 0x70, 0xF0, 0x10, 0xf0, 0x80,
+            0xF0, 0xF0, 0x10, 0xF0, 0x10, 0xF0, 0x90, 0x90, 0xF0, 0x10, 0x10, 0xF0, 0x80, 0xF0,
+            0x10, 0xF0, 0xF0, 0x80, 0xF0, 0x90, 0xF0, 0xF0, 0x10, 0x20, 0x40, 0x40, 0xF0, 0x90,
+            0xF0, 0x90, 0xF0, 0xF0, 0x90, 0xF0, 0x10, 0xF0, 0xF0, 0x90, 0xF0, 0x90, 0x90, 0xE0,
+            0x90, 0xE0, 0x90, 0xE0, 0xF0, 0x80, 0x80, 0x80, 0xF0, 0xE0, 0x90, 0x90, 0x90, 0xE0,
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80,
+        ];
+
+        for pos in 0..font.len() {
+            memory[pos] = font[pos];
+        }
+
+        for pos in 0..rom.len() {
+            memory[0x200 + pos] = rom[pos];
+        }
+
         Cpu {
-            pc: 0,
+            pc: 0x200,
             reg: [0; 16],
             memory: memory,
             last_key: None,
@@ -39,16 +58,12 @@ impl Cpu {
         }
     }
 
-    // TODO(jordanjtw): Remove |bool| hack to pause execution while debugging.
-    pub fn tick(&mut self) -> bool {
+    pub fn tick(&mut self) {
         if self.state == State::Running {
             let instruction = (self.memory[self.pc] as u16) << 8 | self.memory[self.pc + 1] as u16;
-            if self.execute(instruction) {
-                self.pc = self.pc + 2;
-                return true;
-            }
+            self.execute(instruction);
+            self.pc = self.pc + 2;
         }
-        return false;
     }
 
     pub fn display(&mut self) -> &[bool; 64 * 32] {
@@ -80,7 +95,7 @@ impl Cpu {
         }
     }
 
-    fn execute(&mut self, instruction: u16) -> bool {
+    fn execute(&mut self, instruction: u16) {
         let nnn = instruction & 0xFFF;
         let nn = (instruction & 0xFF) as u8;
         let n = (instruction & 0xF) as u8;
@@ -108,7 +123,7 @@ impl Cpu {
             (0x1, _, _, _) => {
                 println!("goto 0x{:03X}", nnn);
                 // TODO(jordanjtw): Clean-up this PC fiddling.
-                self.pc = (nnn as usize - 2) - 0x200;
+                self.pc = nnn as usize - 2;
             }
             // 0x2NNN: Calls subroutine at NNN
             (0x2, _, _, _) => {
@@ -116,7 +131,7 @@ impl Cpu {
                 self.stack[self.sp] = self.pc;
                 self.sp = self.sp + 1;
                 // TODO(jordanjtw): Clean-up this PC fiddling.
-                self.pc = (nnn as usize - 2) - 0x200;
+                self.pc = nnn as usize - 2;
             }
             // 0x3XNN: Skips next instruction if VX equals NN
             (0x3, _, _, _) => {
@@ -211,17 +226,20 @@ impl Cpu {
             // 0xANNN: Sets I to the address NNN
             (0xA, _, _, _) => {
                 println!("I = NNN");
-                self.i = nnn as usize - 0x200;
+                self.i = nnn as usize;
             }
             // 0xBNNN: Jumps to the address NNN plus V0
             (0xB, _, _, _) => {
                 println!("PC = V0 + NNN");
                 // TODO(jordanjtw): Clean-up this PC fiddling.
-                self.pc = (self.reg[0] as u16 + nnn) as usize - 0x200 - 2;
+                self.pc = (self.reg[0] as u16 + nnn) as usize - 2;
             }
             // 0xCXNN: Sets VX to the result of a bitwise and operation on a
             //         random number (Typically: 0 to 255) and NN
-            (0xC, _, _, _) => panic!("Vx = rand() & NN"),
+            (0xC, _, _, _) => {
+                println!("Vx = rand() & NN");
+                self.reg[x] = rand::random::<u8>() & nn;
+            }
             // 0xDXYN: Draws a sprite at coordinate (VX, VY) that has a width
             //         of 8 pixels and a height of N pixels. Each row of 8
             //         pixels is read as bit-coded starting from memory location
@@ -234,6 +252,8 @@ impl Cpu {
                 let (x, y) = (self.reg[x], self.reg[y]);
                 println!("draw(X={}, Y={}, H={})", x, y, n);
 
+                self.reg[0xf] = 0;
+
                 for dy in 0..n {
                     for dx in 0..8 {
                         let (x, y) = (x + dx, y + dy);
@@ -244,13 +264,18 @@ impl Cpu {
                         }
 
                         let index: usize = y as usize * 64 + x as usize;
-                        self.display[index] = ((byte << dx) & 0x80) != 0;
+                        let value: bool = ((byte << dx) & 0x80) != 0;
+
+                        if value {
+                            self.reg[0xf] |= self.display[index] as u8;
+                            self.display[index] ^= true;
+                        }
                     }
                 }
 
                 self.print_board();
             }
-           // 0xEX9E: Skips the next instruction if the key stored in VX is
+            // 0xEX9E: Skips the next instruction if the key stored in VX is
             //         pressed
             (0xE, _, 0x9, 0xE) => {
                 println!("Skip if key() == Vx");
@@ -290,11 +315,17 @@ impl Cpu {
             // 0xFX18: Sets the sound timer to VX
             (0xF, _, 0x1, 0x8) => println!("sound_timer(Vx)"),
             // 0xFX1E: Adds VX to I
-            (0xF, _, 0x1, 0xE) => panic!("I += Vx"),
+            (0xF, _, 0x1, 0xE) => {
+                println!("I += Vx");
+                self.i += self.reg[x] as usize;
+            }
             // 0xFX29: Sets I to the location of the sprite for the character
             //         in VX. Characters 0-F (in hexadecimal) are represented
             //         by a 4x5 font
-            (0xF, _, 0x2, 0x9) => panic!("I = sprite_addr[Vx]"),
+            (0xF, _, 0x2, 0x9) => {
+                println!("I = sprite_addr[Vx]");
+                self.i = self.reg[x] as usize * 5;
+            }
             // 0xFX33: Stores the binary-coded decimal representation of VX,
             //         with the most significant of three digits at the address
             //         in I, the middle digit at I plus 1, and the least
@@ -334,8 +365,6 @@ impl Cpu {
             }
             (_, _, _, _) => panic!("Unknown instruction: 0x{:04X}", instruction),
         };
-
-        true
     }
 
     fn print_board(&mut self) {
