@@ -112,7 +112,12 @@ impl Cpu {
         println!("Executing instruction: 0x{:04X}", instruction);
 
         match instruction_exploded {
-            (0x0, 0x0, 0xE, 0x0) => println!("Clear Screen"),
+            (0x0, 0x0, 0xE, 0x0) => {
+                println!("Clear Screen");
+                for i in 0..self.display.len() {
+                    self.display[i] = false;
+                }
+            },
             (0x0, 0x0, 0xE, 0xE) => {
                 println!("Return from subroutine");
                 self.sp = self.sp - 1;
@@ -204,7 +209,11 @@ impl Cpu {
             }
             // 0x8XY6: Stores the least significant bit of VX in VF and then
             //         shifts VX to the right by 1
-            (0x8, _, _, 0x6) => panic!("Vx >>= 1"),
+            (0x8, _, _, 0x6) => {
+                println!("Vx >>= 1");
+                self.reg[0x0f] = self.reg[x] & 1;
+                self.reg[x] >>= 1;
+            },
             // 0x8XY7: Sets VX to VY minus VX. VF is set to 0 when there's a
             //         borrow, and 1 when there isn't i.e. the flag is set if
             //         the result of the subtraction would be negative.
@@ -215,7 +224,11 @@ impl Cpu {
             }
             // 0x8XYE: Stores the most significant bit of VX in VF and then
             //         shifts VX to the left by 1
-            (0x8, _, _, 0xE) => panic!("Vx <<= 1"),
+            (0x8, _, _, 0xE) => {
+                println!("Vx <<= 1");
+                self.reg[0x0f] = (self.reg[x] & 0x80) >> 7;
+                self.reg[x] <<= 1;
+            },
             // 0x9XY0: Skips the next instruction if VX doesn't equal VY
             (0x9, _, _, 0x0) => {
                 println!("Skip if Vx != Vy");
@@ -249,21 +262,17 @@ impl Cpu {
             //         sprite is drawn, and to 0 if that doesn’t happen
             (0xD, _, _, _) => {
                 println!("draw(Vx,Vy,N)");
-                let (x, y) = (self.reg[x], self.reg[y]);
+                let (x, y) = (self.reg[x] as usize, self.reg[y] as usize);
                 println!("draw(X={}, Y={}, H={})", x, y, n);
 
                 self.reg[0xf] = 0;
 
-                for dy in 0..n {
+                for dy in 0..n as usize {
                     for dx in 0..8 {
-                        let (x, y) = (x + dx, y + dy);
-                        let byte: u8 = self.memory[self.i + dy as usize];
+                        let (x, y) = ((x + dx) % 64, (y + dy) % 32);
+                        let byte: u8 = self.memory[self.i + dy];
 
-                        if x >= 64 || y >= 32 {
-                            continue;
-                        }
-
-                        let index: usize = y as usize * 64 + x as usize;
+                        let index: usize = y * 64 + x;
                         let value: bool = ((byte << dx) & 0x80) != 0;
 
                         if value {
@@ -313,7 +322,10 @@ impl Cpu {
                 self.delay_timer = self.reg[x] as f64;
             }
             // 0xFX18: Sets the sound timer to VX
-            (0xF, _, 0x1, 0x8) => println!("sound_timer(Vx)"),
+            (0xF, _, 0x1, 0x8) => {
+                println!("sound_timer(Vx)");
+                self.sound_timer = self.reg[x] as f64;
+            },
             // 0xFX1E: Adds VX to I
             (0xF, _, 0x1, 0xE) => {
                 println!("I += Vx");
@@ -350,7 +362,7 @@ impl Cpu {
             //         value written, but I itself is left unmodified
             (0xF, _, 0x5, 0x5) => {
                 println!("Store V0-X to address I");
-                for pos in 0..x {
+                for pos in 0..x+1 {
                     self.memory[self.i + pos] = self.reg[pos];
                 }
             }
@@ -359,7 +371,7 @@ impl Cpu {
             //         1 for each value written, but I itself is left unmodified
             (0xF, _, 0x6, 0x5) => {
                 println!("Load V0-X from address I");
-                for pos in 0..x {
+                for pos in 0..x+1 {
                     self.reg[pos] = self.memory[self.i + pos];
                 }
             }
