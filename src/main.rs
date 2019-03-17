@@ -8,6 +8,8 @@ use std::io::prelude::*;
 
 mod cpu;
 
+// CRT Monitor green:
+const PIXEL_COLOR: [f32; 4] = [0.0, 0.95, 0.0, 1.0];
 const WINDOW_SIZE: [u32; 2] = [500, 250];
 
 fn main() {
@@ -58,8 +60,8 @@ fn main() {
                 for y in 0..32 {
                     if board[y * 64 + x] {
                         let location =
-                            rectangle::square(x as f64 * dimen, y as f64 * dimen, dimen - 0.5);
-                        rectangle(color::WHITE, location, ctx.transform, gfx);
+                            rectangle::square(x as f64 * dimen, y as f64 * dimen, dimen);
+                        rectangle(PIXEL_COLOR, location, ctx.transform, gfx);
                     }
                 }
             }
