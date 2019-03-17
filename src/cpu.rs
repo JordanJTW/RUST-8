@@ -1,5 +1,7 @@
 // Copyright of Jordan Werthman (2019).
 
+use crate::memory::Memory;
+
 #[derive(PartialEq)]
 enum State {
     Running,
@@ -9,11 +11,9 @@ enum State {
 pub struct Cpu {
     pc: usize,
     reg: [u8; 16],
-    memory: [u8; 4096],
+    memory: Memory,
     last_key: Option<usize>,
     state: State,
-    stack: [usize; 16],
-    sp: usize,
     display: [bool; 64 * 32],
     keys: [bool; 16],
     i: usize,
@@ -22,34 +22,13 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(rom: Vec<u8>) -> Cpu {
-        let mut memory = [0; 4096];
-
-        let font: [u8; 80] = [
-            0xF0, 0x90, 0x90, 0x90, 0xF0, 0x20, 0x60, 0x20, 0x20, 0x70, 0xF0, 0x10, 0xf0, 0x80,
-            0xF0, 0xF0, 0x10, 0xF0, 0x10, 0xF0, 0x90, 0x90, 0xF0, 0x10, 0x10, 0xF0, 0x80, 0xF0,
-            0x10, 0xF0, 0xF0, 0x80, 0xF0, 0x90, 0xF0, 0xF0, 0x10, 0x20, 0x40, 0x40, 0xF0, 0x90,
-            0xF0, 0x90, 0xF0, 0xF0, 0x90, 0xF0, 0x10, 0xF0, 0xF0, 0x90, 0xF0, 0x90, 0x90, 0xE0,
-            0x90, 0xE0, 0x90, 0xE0, 0xF0, 0x80, 0x80, 0x80, 0xF0, 0xE0, 0x90, 0x90, 0x90, 0xE0,
-            0xF0, 0x80, 0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80,
-        ];
-
-        for pos in 0..font.len() {
-            memory[pos] = font[pos];
-        }
-
-        for pos in 0..rom.len() {
-            memory[0x200 + pos] = rom[pos];
-        }
-
+    pub fn new(memory: Memory) -> Cpu {
         Cpu {
             pc: 0x200,
             reg: [0; 16],
             memory: memory,
             last_key: None,
             state: State::Running,
-            stack: [0; 16],
-            sp: 0,
             display: [false; 64 * 32],
             keys: [false; 16],
             i: 0,
@@ -60,7 +39,7 @@ impl Cpu {
 
     pub fn tick(&mut self) {
         if self.state == State::Running {
-            let instruction = (self.memory[self.pc] as u16) << 8 | self.memory[self.pc + 1] as u16;
+            let instruction = self.memory.read_instruction(self.pc);
             self.execute(instruction);
             self.pc = self.pc + 2;
         }
@@ -120,8 +99,7 @@ impl Cpu {
             },
             (0x0, 0x0, 0xE, 0xE) => {
                 println!("Return from subroutine");
-                self.sp = self.sp - 1;
-                self.pc = self.stack[self.sp];
+                self.pc = self.memory.pop_stack();
             }
             (0x0, _, _, _) => panic!("Calls to RCA 1802"),
             // 0x1NNN: goto NNN
@@ -133,8 +111,7 @@ impl Cpu {
             // 0x2NNN: Calls subroutine at NNN
             (0x2, _, _, _) => {
                 println!("Call: 0x{:03X}()", nnn);
-                self.stack[self.sp] = self.pc;
-                self.sp = self.sp + 1;
+                self.memory.push_stack(self.pc);
                 // TODO(jordanjtw): Clean-up this PC fiddling.
                 self.pc = nnn as usize - 2;
             }
@@ -270,7 +247,7 @@ impl Cpu {
                 for dy in 0..n as usize {
                     for dx in 0..8 {
                         let (x, y) = ((x + dx) % 64, (y + dy) % 32);
-                        let byte: u8 = self.memory[self.i + dy];
+                        let byte: u8 = self.memory.data()[self.i + dy];
 
                         let index: usize = y * 64 + x;
                         let value: bool = ((byte << dx) & 0x80) != 0;
@@ -353,7 +330,7 @@ impl Cpu {
                     let magnitude = 10_u8.pow(2 - pos);
                     let digit = value / magnitude;
 
-                    self.memory[self.i + pos as usize] = digit;
+                    self.memory.data()[self.i + pos as usize] = digit;
                     value -= magnitude * digit;
                 }
             }
@@ -363,7 +340,7 @@ impl Cpu {
             (0xF, _, 0x5, 0x5) => {
                 println!("Store V0-X to address I");
                 for pos in 0..x+1 {
-                    self.memory[self.i + pos] = self.reg[pos];
+                    self.memory.data()[self.i + pos] = self.reg[pos];
                 }
             }
             // 0xFX65: Fills V0 to VX (including VX) with values from memory
@@ -372,7 +349,7 @@ impl Cpu {
             (0xF, _, 0x6, 0x5) => {
                 println!("Load V0-X from address I");
                 for pos in 0..x+1 {
-                    self.reg[pos] = self.memory[self.i + pos];
+                    self.reg[pos] = self.memory.data()[self.i + pos];
                 }
             }
             (_, _, _, _) => panic!("Unknown instruction: 0x{:04X}", instruction),

@@ -7,6 +7,7 @@ use std::io;
 use std::io::prelude::*;
 
 mod cpu;
+mod memory;
 
 // CRT Monitor green:
 const PIXEL_COLOR: [f32; 4] = [0.0, 0.95, 0.0, 1.0];
@@ -14,7 +15,8 @@ const WINDOW_SIZE: [u32; 2] = [500, 250];
 
 fn main() {
     let buffer = read_file("brix.ch8").expect("File not found.");
-    let mut cpu: cpu::Cpu = cpu::Cpu::new(buffer);
+    let memory : memory::Memory = memory::Memory::new(&buffer);
+    let mut cpu: cpu::Cpu = cpu::Cpu::new(memory);
 
     let opengl = OpenGL::V3_2;
     let mut window: PistonWindow = WindowSettings::new("RUST-8", WINDOW_SIZE)
@@ -89,7 +91,9 @@ fn main() {
                 }
                 Input::FileDrag(FileDrag::Drop(path)) => {
                     let filename: &str = path.to_str().expect("Invalid path.");
-                    cpu = cpu::Cpu::new(read_file(filename).expect("File not found."));
+                    let buffer: Vec<u8> = read_file(filename).expect("File not found.");
+                    let memory : memory::Memory = memory::Memory::new(&buffer);
+                    cpu = cpu::Cpu::new(memory);
                     should_tick = true;
                 }
                 _ => (),
