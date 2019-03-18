@@ -6,17 +6,17 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 
-mod cpu;
-mod memory;
+use rust8::Bus;
+use rust8::Cpu;
+use rust8::Memory;
 
 // CRT Monitor green:
 const PIXEL_COLOR: [f32; 4] = [0.0, 0.95, 0.0, 1.0];
 const WINDOW_SIZE: [u32; 2] = [500, 250];
 
 fn main() {
-    let buffer = read_file("brix.ch8").expect("File not found.");
-    let memory : memory::Memory = memory::Memory::new(&buffer);
-    let mut cpu: cpu::Cpu = cpu::Cpu::new(memory);
+    let mut bus: Bus = Bus::new();
+    let mut cpu: Cpu = Cpu::new_empty();
 
     let opengl = OpenGL::V3_2;
     let mut window: PistonWindow = WindowSettings::new("RUST-8", WINDOW_SIZE)
@@ -55,14 +55,13 @@ fn main() {
         window.draw_2d(&event, |ctx, gfx| {
             clear(color::BLACK, gfx);
 
-            let board = cpu.display();
+            let board = bus.display();
             let dimen = ctx.get_view_size()[0] / 64.0;
 
             for x in 0..64 {
                 for y in 0..32 {
                     if board[y * 64 + x] {
-                        let location =
-                            rectangle::square(x as f64 * dimen, y as f64 * dimen, dimen);
+                        let location = rectangle::square(x as f64 * dimen, y as f64 * dimen, dimen);
                         rectangle(PIXEL_COLOR, location, ctx.transform, gfx);
                     }
                 }
@@ -80,20 +79,17 @@ fn main() {
                         match state {
                             ButtonState::Press => {
                                 println!("Keypad set {:?}", keypad);
-                                cpu.set_key(keypad);
+                                bus.set_key(keypad);
                             }
                             ButtonState::Release => {
                                 println!("Keypad clear {:?}", keypad);
-                                cpu.clear_key(keypad);
+                                bus.clear_key(keypad);
                             }
                         }
                     }
                 }
                 Input::FileDrag(FileDrag::Drop(path)) => {
-                    let filename: &str = path.to_str().expect("Invalid path.");
-                    let buffer: Vec<u8> = read_file(filename).expect("File not found.");
-                    let memory : memory::Memory = memory::Memory::new(&buffer);
-                    cpu = cpu::Cpu::new(memory);
+                    cpu = load_rom(path.to_str().expect("Invalid path"));
                     should_tick = true;
                 }
                 _ => (),
@@ -101,13 +97,20 @@ fn main() {
         }
 
         if let Some(args) = event.update_args() {
-            cpu.update_timers(args.dt);
+            bus.update_timers(args.dt);
         }
 
         if should_tick {
-           cpu.tick();
+            cpu.tick(&mut bus);
         }
     }
+}
+
+fn load_rom(filename: &str) -> Cpu {
+    let buffer: Vec<u8> = read_file(filename).expect("File not found.");
+    let memory: Memory = Memory::new(&buffer);
+
+    Cpu::new(memory)
 }
 
 fn read_file(filename: &str) -> io::Result<(Vec<u8>)> {
