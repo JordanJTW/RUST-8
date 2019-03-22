@@ -1,8 +1,23 @@
 // Copyright of Jordan Werthman (2019).
 
+use crate::memory::Memory;
+
+// Models the address bus for I/O
+//
+// Handles interfacing the CPU with the I/O used to render the screen or
+// read in keypresses.
+
+pub const WINDOW_HEIGHT: usize = 32;
+pub const WINDOW_WIDTH: usize = 64;
+
+const KEY_COUNT: usize = 16;
+const PIXEL_COUNT: usize = WINDOW_HEIGHT * WINDOW_WIDTH;
+
+const TIMER_FREQUENCY: f64 = 60.0;
+
 pub struct Bus {
-    display: [bool; 64 * 32],
-    keys: [bool; 16],
+    display: [bool; PIXEL_COUNT],
+    keys: [bool; KEY_COUNT],
     delay_timer: f64,
     sound_timer: f64,
 }
@@ -10,20 +25,55 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Bus {
         Bus {
-            display: [false; 64 * 32],
-            keys: [false; 16],
+            display: [false; PIXEL_COUNT],
+            keys: [false; KEY_COUNT],
             delay_timer: 0.0,
             sound_timer: 0.0,
         }
     }
 
-    pub fn display(&mut self) -> &mut [bool; 64 * 32] {
-        return &mut self.display;
+    pub fn display(&self) -> &[bool; PIXEL_COUNT] {
+        return &self.display;
+    }
+
+    pub fn draw_display(
+        &mut self,
+        memory: &mut Memory,
+        memory_offset: usize,
+        (x, y): (usize, usize),
+        height: usize,
+    ) -> bool {
+        let mut pixel_flipped = false;
+
+        for dy in 0..height {
+            for dx in 0..8 {
+                let (x, y) = ((x + dx) % WINDOW_WIDTH, (y + dy) % WINDOW_HEIGHT);
+                let byte: u8 = memory.data()[memory_offset + dy];
+
+                let index: usize = y * WINDOW_WIDTH + x;
+                let value: bool = ((byte << dx) & 0x80) != 0;
+
+                if value {
+                    pixel_flipped |= self.display[index];
+                    self.display[index] ^= true;
+                }
+            }
+        }
+
+        self.print_board();
+        return pixel_flipped;
     }
 
     pub fn clear_display(&mut self) {
-        for i in 0..self.display.len() {
+        for i in 0..PIXEL_COUNT {
             self.display[i] = false;
+        }
+    }
+
+    pub fn any_key(&self) -> Option<u8> {
+        match self.keys.iter().enumerate().find(|&(_, &value)| value) {
+            Some((key, _)) => Some(key as u8),
+            None => None,
         }
     }
 
@@ -57,16 +107,36 @@ impl Bus {
 
     pub fn update_timers(&mut self, dt: f64) {
         if self.delay_timer > 0.0 {
-            self.delay_timer -= dt * 60.0;
+            self.delay_timer -= dt * TIMER_FREQUENCY;
         }
         if self.sound_timer > 0.0 {
-            self.sound_timer -= dt * 60.0;
+            self.sound_timer -= dt * TIMER_FREQUENCY;
         }
         if self.delay_timer < 0.0 {
             self.delay_timer = 0.0;
         }
         if self.sound_timer < 0.0 {
             self.sound_timer = 0.0;
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.clear_display();
+        self.set_delay_timer(0);
+        self.set_sound_timer(0);
+
+        for key in 0..KEY_COUNT {
+            self.clear_key(key);
+        }
+    }
+
+    fn print_board(&self) {
+        for x in 0..WINDOW_WIDTH {
+            for y in 0..WINDOW_HEIGHT {
+                let index: usize = y as usize * WINDOW_WIDTH + x as usize;
+                print!("{}", if self.display[index] { "#" } else { "_" });
+            }
+            println!();
         }
     }
 }

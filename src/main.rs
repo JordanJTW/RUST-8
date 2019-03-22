@@ -8,7 +8,9 @@ use std::io::prelude::*;
 
 use rust8::Bus;
 use rust8::Cpu;
-use rust8::Memory;
+
+use rust8::WINDOW_HEIGHT;
+use rust8::WINDOW_WIDTH;
 
 // CRT Monitor green:
 const PIXEL_COLOR: [f32; 4] = [0.0, 0.95, 0.0, 1.0];
@@ -16,17 +18,16 @@ const WINDOW_SIZE: [u32; 2] = [500, 250];
 
 fn main() {
     let mut bus: Bus = Bus::new();
-    let mut cpu: Cpu = Cpu::new_empty();
+    let mut cpu: Option<Cpu> = None;
 
     let opengl = OpenGL::V3_2;
     let mut window: PistonWindow = WindowSettings::new("RUST-8", WINDOW_SIZE)
         .exit_on_esc(true)
         .opengl(opengl)
-        // .fullscreen(true)
         .build()
         .unwrap();
 
-    let key_mapping = |piston_key| {
+    let key_mapping = |ref piston_key| {
         use keyboard::Key;
 
         match piston_key {
@@ -56,11 +57,11 @@ fn main() {
             clear(color::BLACK, gfx);
 
             let board = bus.display();
-            let dimen = ctx.get_view_size()[0] / 64.0;
+            let dimen = ctx.get_view_size()[0] / WINDOW_WIDTH as f64;
 
-            for x in 0..64 {
-                for y in 0..32 {
-                    if board[y * 64 + x] {
+            for x in 0..WINDOW_WIDTH {
+                for y in 0..WINDOW_HEIGHT {
+                    if board[y * WINDOW_WIDTH + x] {
                         let location = rectangle::square(x as f64 * dimen, y as f64 * dimen, dimen);
                         rectangle(PIXEL_COLOR, location, ctx.transform, gfx);
                     }
@@ -68,8 +69,24 @@ fn main() {
             }
         });
 
-        if let Event::Input(input) = &event {
+        if let Event::Input(ref input) = event {
             match input {
+                Input::Button(ButtonArgs {
+                    button: Button::Keyboard(Key::Space),
+                    state: ButtonState::Press,
+                    ..
+                }) => {
+                    should_tick = !should_tick;
+                }
+                Input::Button(ButtonArgs {
+                    button: Button::Keyboard(Key::Return),
+                    state: ButtonState::Press,
+                    ..
+                }) => {
+                    if let Some(ref mut cpu) = cpu {
+                        cpu.tick(&mut bus);
+                    }
+                }
                 Input::Button(ButtonArgs {
                     button: Button::Keyboard(key),
                     state,
@@ -89,28 +106,28 @@ fn main() {
                     }
                 }
                 Input::FileDrag(FileDrag::Drop(path)) => {
-                    cpu = load_rom(path.to_str().expect("Invalid path"));
+                    let filename = path.to_str().expect("Invalid path");
+                    let buffer = read_file(filename).expect("File not found.");
+
+                    cpu = Some(Cpu::new(&buffer));
+                    bus.reset();
+
                     should_tick = true;
                 }
                 _ => (),
             }
         }
 
-        if let Some(args) = event.update_args() {
+        if let Some(ref args) = event.update_args() {
             bus.update_timers(args.dt);
         }
 
         if should_tick {
-            cpu.tick(&mut bus);
+            if let Some(ref mut cpu) = cpu {
+                cpu.tick(&mut bus);
+            }
         }
     }
-}
-
-fn load_rom(filename: &str) -> Cpu {
-    let buffer: Vec<u8> = read_file(filename).expect("File not found.");
-    let memory: Memory = Memory::new(&buffer);
-
-    Cpu::new(memory)
 }
 
 fn read_file(filename: &str) -> io::Result<(Vec<u8>)> {

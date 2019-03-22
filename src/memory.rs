@@ -30,7 +30,8 @@ const FONT: [u8; 80] = [
 ];
 
 const STACK_OFFSET: usize = 0x50;
-const USER_OFFSET: usize = 0x200;
+
+pub const USER_OFFSET: usize = 0x200;
 
 pub struct Memory {
     memory: [u8; 4096],

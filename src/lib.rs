@@ -4,4 +4,6 @@ mod memory;
 
 pub use bus::Bus;
 pub use cpu::Cpu;
-pub use memory::Memory;
+
+pub use bus::WINDOW_HEIGHT;
+pub use bus::WINDOW_WIDTH;

@@ -2,47 +2,52 @@
 
 use crate::bus::Bus;
 use crate::memory::Memory;
+use crate::memory::USER_OFFSET;
 
-#[derive(PartialEq)]
-enum State {
-    Running,
-    KeyExpected,
+// Models the CHIP-8 processor
+//
+// Given |memory| this processor interprets instructions in a ROM and
+// executes one each tick() of the CPU. On each tick() the CPU interacts
+// with I/O over the |bus|. The CHIP-8 CPU has 35 opcodes in total with
+// an explaination of each found at: https://en.wikipedia.org/wiki/CHIP-8
+
+enum PcOp {
+    Next,        // Moves PC to the next instruction in memory
+    Skip,        // Skips the current and next instruction
+    Jump(usize), // Jumps to the given location in memory
+    Halt,        // Remains on the current instruction
 }
+
+const REG_COUNT: usize = 16;
 
 pub struct Cpu {
     pc: usize,
-    reg: [u8; 16],
+    reg: [u8; REG_COUNT],
     memory: Memory,
-    last_key: Option<usize>,
-    state: State,
     i: usize,
 }
 
 impl Cpu {
-    pub fn new_empty() -> Cpu {
-        return Cpu::new(Memory::new(&vec![0]));
-    }
-
-    pub fn new(memory: Memory) -> Cpu {
+    pub fn new(rom: &Vec<u8>) -> Cpu {
         Cpu {
-            pc: 0x200,
-            reg: [0; 16],
-            memory: memory,
-            last_key: None,
-            state: State::Running,
+            pc: USER_OFFSET,
+            reg: [0; REG_COUNT],
+            memory: Memory::new(rom),
             i: 0,
         }
     }
 
     pub fn tick(&mut self, bus: &mut Bus) {
-        if self.state == State::Running {
-            let instruction = self.memory.read_instruction(self.pc);
-            self.execute(instruction, bus);
-            self.pc = self.pc + 2;
+        let instruction = self.memory.read_instruction(self.pc);
+        match self.execute(instruction, bus) {
+            PcOp::Next => self.pc = self.pc + 2,
+            PcOp::Skip => self.pc = self.pc + 4,
+            PcOp::Jump(addr) => self.pc = addr,
+            PcOp::Halt => (),
         }
     }
 
-    fn execute(&mut self, instruction: u16, bus: &mut Bus) {
+    fn execute(&mut self, instruction: u16, bus: &mut Bus) -> PcOp {
         let nnn = instruction & 0xFFF;
         let nn = (instruction & 0xFF) as u8;
         let n = (instruction & 0xF) as u8;
@@ -59,47 +64,49 @@ impl Cpu {
         println!("Executing instruction: 0x{:04X}", instruction);
 
         match instruction_exploded {
+            // 0x00E0: Clears the screen
             (0x0, 0x0, 0xE, 0x0) => {
                 println!("Clear Screen");
                 bus.clear_display();
             }
+            // 0x00EE: Returns from a subroutine
             (0x0, 0x0, 0xE, 0xE) => {
                 println!("Return from subroutine");
-                self.pc = self.memory.pop_stack();
+                return PcOp::Jump(self.memory.pop_stack());
             }
             (0x0, _, _, _) => panic!("Calls to RCA 1802"),
             // 0x1NNN: goto NNN
             (0x1, _, _, _) => {
                 println!("goto 0x{:03X}", nnn);
-                // TODO(jordanjtw): Clean-up this PC fiddling.
-                self.pc = nnn as usize - 2;
+                return PcOp::Jump(nnn as usize);
             }
             // 0x2NNN: Calls subroutine at NNN
             (0x2, _, _, _) => {
                 println!("Call: 0x{:03X}()", nnn);
-                self.memory.push_stack(self.pc);
-                // TODO(jordanjtw): Clean-up this PC fiddling.
-                self.pc = nnn as usize - 2;
+                // Add 2 to the current PC so that we return to the instruction after
+                // the current one; otherwise we end up calling the subroutine again.
+                self.memory.push_stack(self.pc + 2);
+                return PcOp::Jump(nnn as usize);
             }
             // 0x3XNN: Skips next instruction if VX equals NN
             (0x3, _, _, _) => {
                 println!("Skip if Vx == NN");
                 if self.reg[x] == nn {
-                    self.pc = self.pc + 2;
+                    return PcOp::Skip;
                 }
             }
             // 0x4XNN: Skips next instruction if VX does not equals NN
             (0x4, _, _, _) => {
                 println!("Skip if Vx != NN");
                 if self.reg[x] != nn {
-                    self.pc = self.pc + 2;
+                    return PcOp::Skip;
                 }
             }
             // 0x5XY0: Skips next instruction if VX equals VY
             (0x5, _, _, 0x0) => {
                 println!("Skip if Vx == Vy");
                 if self.reg[x] == self.reg[y] {
-                    self.pc = self.pc + 2;
+                    return PcOp::Skip;
                 }
             }
             // 0x6XNN: Sets VX to NN
@@ -176,7 +183,7 @@ impl Cpu {
             (0x9, _, _, 0x0) => {
                 println!("Skip if Vx != Vy");
                 if self.reg[x] != self.reg[y] {
-                    self.pc = self.pc + 2;
+                    return PcOp::Skip;
                 }
             }
             // 0xANNN: Sets I to the address NNN
@@ -187,8 +194,7 @@ impl Cpu {
             // 0xBNNN: Jumps to the address NNN plus V0
             (0xB, _, _, _) => {
                 println!("PC = V0 + NNN");
-                // TODO(jordanjtw): Clean-up this PC fiddling.
-                self.pc = (self.reg[0] as u16 + nnn) as usize - 2;
+                return PcOp::Jump((self.reg[0] as u16 + nnn) as usize);
             }
             // 0xCXNN: Sets VX to the result of a bitwise and operation on a
             //         random number (Typically: 0 to 255) and NN
@@ -205,34 +211,16 @@ impl Cpu {
             //         sprite is drawn, and to 0 if that doesn’t happen
             (0xD, _, _, _) => {
                 println!("draw(Vx,Vy,N)");
-                let (x, y) = (self.reg[x] as usize, self.reg[y] as usize);
-                println!("draw(X={}, Y={}, H={})", x, y, n);
-
-                self.reg[0xf] = 0;
-
-                for dy in 0..n as usize {
-                    for dx in 0..8 {
-                        let (x, y) = ((x + dx) % 64, (y + dy) % 32);
-                        let byte: u8 = self.memory.data()[self.i + dy];
-
-                        let index: usize = y * 64 + x;
-                        let value: bool = ((byte << dx) & 0x80) != 0;
-
-                        if value {
-                            self.reg[0xf] |= bus.display()[index] as u8;
-                            bus.display()[index] ^= true;
-                        }
-                    }
-                }
-
-                self.print_board(bus.display());
+                let position = (self.reg[x] as usize, self.reg[y] as usize);
+                let pixel_flip = bus.draw_display(&mut self.memory, self.i, position, n as usize);
+                self.reg[0xf] = pixel_flip as u8;
             }
             // 0xEX9E: Skips the next instruction if the key stored in VX is
             //         pressed
             (0xE, _, 0x9, 0xE) => {
                 println!("Skip if key() == Vx");
                 if bus.check_key(self.reg[x]) {
-                    self.pc = self.pc + 2;
+                    return PcOp::Skip;
                 }
             }
             // 0xEXA1: Skips the next instruction if the key stored in VX is
@@ -240,7 +228,7 @@ impl Cpu {
             (0xE, _, 0xA, 0x1) => {
                 println!("Skip if key() != Vx");
                 if !bus.check_key(self.reg[x]) {
-                    self.pc = self.pc + 2;
+                    return PcOp::Skip;
                 }
             }
             // 0xFX07: Sets VX to the value of the delay timer
@@ -252,11 +240,11 @@ impl Cpu {
             //         Operation. All instruction halted until next key event)
             (0xF, _, 0x0, 0xA) => {
                 println!("Vx = get_key()");
-                self.state = State::KeyExpected;
-                if let Some(key) = self.last_key {
-                    println!("Set Vx to {:X}", key as u8);
-                    self.reg[x] = key as u8;
-                    self.last_key = None;
+                if let Some(key) = bus.any_key() {
+                    println!("Set Vx to {:X}", key);
+                    self.reg[x] = key;
+                } else {
+                    return PcOp::Halt;
                 }
             }
             // 0xFX15: Sets the delay timer to Vx
@@ -320,15 +308,7 @@ impl Cpu {
             }
             (_, _, _, _) => panic!("Unknown instruction: 0x{:04X}", instruction),
         };
-    }
 
-    fn print_board(&mut self, display: &[bool]) {
-        for y in 0..32 {
-            for x in 0..64 {
-                let index: usize = y as usize * 64 + x as usize;
-                print!("{}", if display[index] { "#" } else { "_" });
-            }
-            println!();
-        }
+        PcOp::Next
     }
 }
