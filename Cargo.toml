@@ -5,6 +5,8 @@ authors = ["Jordan Werthman <jordanwerthman@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+env_logger = "*"
+log = "0.4.6"
 piston_window = "0.89.0"
 rand = "0.6"
 

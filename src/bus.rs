@@ -1,5 +1,7 @@
 // Copyright of Jordan Werthman (2019).
 
+use log::*;
+
 use crate::memory::Memory;
 
 // Models the address bus for I/O
@@ -60,7 +62,9 @@ impl Bus {
             }
         }
 
-        self.print_board();
+        if log_enabled!(Level::Info) {
+            self.print_board();
+        }
         return pixel_flipped;
     }
 
@@ -131,8 +135,8 @@ impl Bus {
     }
 
     fn print_board(&self) {
-        for x in 0..WINDOW_WIDTH {
-            for y in 0..WINDOW_HEIGHT {
+        for y in 0..WINDOW_HEIGHT {
+            for x in 0..WINDOW_WIDTH {
                 let index: usize = y as usize * WINDOW_WIDTH + x as usize;
                 print!("{}", if self.display[index] { "#" } else { "_" });
             }

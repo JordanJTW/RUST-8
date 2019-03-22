@@ -1,5 +1,8 @@
 // Copyright of Jordan Werthman (2019).
 
+use env_logger;
+use log::*;
+
 use piston_window::*;
 
 use std::fs::File;
@@ -17,6 +20,8 @@ const PIXEL_COLOR: [f32; 4] = [0.0, 0.95, 0.0, 1.0];
 const WINDOW_SIZE: [u32; 2] = [500, 250];
 
 fn main() {
+    env_logger::init();
+
     let mut bus: Bus = Bus::new();
     let mut cpu: Option<Cpu> = None;
 
@@ -95,11 +100,11 @@ fn main() {
                     if let Some(keypad) = key_mapping(*key) {
                         match state {
                             ButtonState::Press => {
-                                println!("Keypad set {:?}", keypad);
+                                info!("Keypad set {:?}", keypad);
                                 bus.set_key(keypad);
                             }
                             ButtonState::Release => {
-                                println!("Keypad clear {:?}", keypad);
+                                info!("Keypad clear {:?}", keypad);
                                 bus.clear_key(keypad);
                             }
                         }
@@ -135,7 +140,7 @@ fn read_file(filename: &str) -> io::Result<(Vec<u8>)> {
 
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
-    println!("Loaded {} instructions.", buffer.len() / 2);
+    info!("Loaded {} instructions.", buffer.len() / 2);
 
     Ok(buffer)
 }
