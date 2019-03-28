@@ -3,3 +3,5 @@
 
 # Chip-8 Programs used for testing:
 *.ch8
+
+pkg
