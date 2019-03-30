@@ -63,7 +63,7 @@ impl Cpu {
             (instruction >> 0) & 0xF,
         );
 
-        info!("Executing instruction: 0x{:04X}", instruction);
+        info!("PC: {} Executing instruction: 0x{:04X}", self.pc, instruction);
 
         match instruction_exploded {
             // 0x00E0: Clears the screen
@@ -202,7 +202,7 @@ impl Cpu {
             //         random number (Typically: 0 to 255) and NN
             (0xC, _, _, _) => {
                 info!("Vx = rand() & NN");
-                self.reg[x] = rand::random::<u8>() & nn;
+                self.reg[x] = 16; // rand::random::<u8>() & nn;
             }
             // 0xDXYN: Draws a sprite at coordinate (VX, VY) that has a width
             //         of 8 pixels and a height of N pixels. Each row of 8

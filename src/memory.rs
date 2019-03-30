@@ -8,6 +8,8 @@
 // in hexidecimal) and [0x50-0x70) contains the call stack (saving return
 // addressed) saving 16 16-byte addresses.
 
+use log::*;
+
 const FONT_OFFSET: usize = 0x0;
 
 const FONT: [u8; 80] = [
@@ -33,6 +35,26 @@ const STACK_OFFSET: usize = 0x50;
 
 pub const USER_OFFSET: usize = 0x200;
 
+fn print_memory_map(memory: &[u8; 4096]) {
+    for pc in 0..2048 {
+        if pc == FONT_OFFSET {
+            info!("System Memory:");
+            info!("Font");
+        } else if pc == STACK_OFFSET {
+            info!("Stack");
+        } else if pc == USER_OFFSET {
+            info!("User Memory:");
+        }
+
+        let instruction = (memory[pc] as u16) << 8 | memory[pc + 1] as u16;
+        info!("Location: {} Instruction: 0x{:04X}", pc, instruction);
+
+        if pc > USER_OFFSET && instruction == 0x0000 {
+            break;
+        }
+    }
+}
+
 pub struct Memory {
     memory: [u8; 4096],
     stack_pointer: usize,
@@ -48,6 +70,8 @@ impl Memory {
         for (i, byte) in rom.iter().enumerate() {
             memory[USER_OFFSET + i] = *byte;
         }
+
+        print_memory_map(&memory);
 
         Memory {
             memory: memory,
@@ -69,7 +93,7 @@ impl Memory {
         (high_byte << 8) | low_byte
     }
 
-    pub fn read_instruction(&mut self, pc: usize) -> u16 {
+    pub fn read_instruction(&self, pc: usize) -> u16 {
         (self.memory[pc] as u16) << 8 | self.memory[pc + 1] as u16
     }
 

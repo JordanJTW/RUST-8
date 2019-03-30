@@ -5,6 +5,7 @@ authors = ["Jordan Werthman <jordanwerthman@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+console_error_panic_hook = "0.1.6"
 env_logger = "*"
 log = "0.4.6"
 rand = "0.6"
