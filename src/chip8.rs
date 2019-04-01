@@ -6,6 +6,8 @@ use wasm_bindgen::prelude::*;
 use crate::bus::Bus;
 use crate::cpu::Cpu;
 
+use crate::bus::WINDOW_WIDTH;
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
@@ -65,9 +67,17 @@ impl Chip8 {
         }
     }
 
+    pub fn check_pixel(&self, x: usize, y: usize) -> bool {
+        return self.bus.display()[y as usize * WINDOW_WIDTH + x as usize];
+    }
+
     pub fn load(&mut self, rom: Vec<u8>) {
     	info!("Loaded {} instructions.", rom.len() / 2);
     	self.cpu = Some(Cpu::new(&rom));
+    }
+
+    pub fn update(&mut self, timer_delta: f64) {
+        self.bus.update_timers(timer_delta);
     }
 
     pub fn tick(&mut self) {
